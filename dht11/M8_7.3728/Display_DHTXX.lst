@@ -1,0 +1,814 @@
+__text_start:
+__start:
+    0013 E5CF      LDI	R28,0x5F
+    0014 E0D4      LDI	R29,4
+    0015 BFCD      OUT	0x3D,R28
+    0016 BFDE      OUT	0x3E,R29
+    0017 51C0      SUBI	R28,0x10
+    0018 40D0      SBCI	R29,0
+    0019 EA0A      LDI	R16,0xAA
+    001A 8308      STD	Y+0,R16
+    001B 2400      CLR	R0
+    001C E6E0      LDI	R30,0x60
+    001D E0F0      LDI	R31,0
+    001E E010      LDI	R17,0
+    001F 37E4      CPI	R30,0x74
+    0020 07F1      CPC	R31,R17
+    0021 F011      BEQ	0x0024
+    0022 9201      ST	R0,Z+
+    0023 CFFB      RJMP	0x001F
+    0024 8300      STD	Z+0,R16
+    0025 E2E6      LDI	R30,0x26
+    0026 E0F0      LDI	R31,0
+    0027 E6A0      LDI	R26,0x60
+    0028 E0B0      LDI	R27,0
+    0029 E010      LDI	R17,0
+    002A 32E6      CPI	R30,0x26
+    002B 07F1      CPC	R31,R17
+    002C F021      BEQ	0x0031
+    002D 95C8      LPM
+    002E 9631      ADIW	R30,1
+    002F 920D      ST	R0,X+
+    0030 CFF9      RJMP	0x002A
+    0031 D166      RCALL	_main
+_exit:
+    0032 CFFF      RJMP	_exit
+FILE: C:\DOCUME~1\Owner\桌面\C\给客户调试板\DHT11_7.3728\M8_7.3728\Display_DHTXX.c
+(0001) //ICC-AVR application builder : 2008-4-28 9:22:37
+(0002) // Target : M8
+(0003) // Crystal: 8.0000Mhz
+(0004) /*************************************************************************
+(0005) 程序：ICC-AVR 
+(0006) 功能：波特率9600 串口发送温湿度数据  
+(0007) 数据格式：湿度  温度  校验和   
+(0008)           例如串口发送数据   59 00 24 00 53   则湿度为59 温度为24 校验和为53 
+(0009) 公司：DHT11
+(0010) 芯片：M8
+(0011) 晶振：外部 7.3728Mhz
+(0012) 创建人： 
+(0013) 创建时间：09.06.18
+(0014) 修改人：
+(0015) 修改时间：
+(0016) 修改原因：
+(0017) **************************************************** **********************/
+(0018) 
+(0019) #include <iom8v.h>
+(0020) #include <macros.h>
+(0021) typedef unsigned char  U8;       /* defined for unsigned 8-bits integer variable 	  无符号8位整型变量  */
+(0022) typedef signed   char  S8;       /* defined for signed 8-bits integer variable		  有符号8位整型变量  */
+(0023) typedef unsigned int   U16;      /* defined for unsigned 16-bits integer variable 	  无符号16位整型变量 */
+(0024) typedef signed   int   S16;      /* defined for signed 16-bits integer variable 	  有符号16位整型变量 */
+(0025) typedef unsigned long  U32;      /* defined for unsigned 32-bits integer variable 	  无符号32位整型变量 */
+(0026) typedef signed   long  S32;      /* defined for signed 32-bits integer variable 	  有符号32位整型变量 */
+(0027) typedef float          F32;      /* single precision floating point variable (32bits) 单精度浮点数（32位长度） */
+(0028) typedef double         F64;      /* double precision floating point variable (64bits) 双精度浮点数（64位长度） */
+(0029) 
+(0030) 
+(0031) /**************************************************************************
+(0032)                     I/O空间定义
+(0033) ***************************************************************************/
+(0034) // B0_IN	DDRB &= ~(1 << PB0)		/*设置输入*/
+(0035) // B0_OUT	DDRB |= (1 << PB0)		/*设置输出*/
+(0036) // B0_CLR	PORTB &= ~(1 << PB0)	/*置低电平*/
+(0037) // B0_SET	PORTB |= (1 << PB0)		/*置高电平*/
+(0038) // B0_R	    PINB & (1 <<PB0)		/*读了电平*/
+(0039) 
+(0040)  #define    C4_IN	  DDRC &= ~(1 << PC4)		/*设置输入*/
+(0041)  #define    C4_OUT	  DDRC |= (1 << PC4)		/*设置输出*/
+(0042)  #define    C4_CLR	  PORTC &= ~(1 << PC4)	    /*置低电平*/
+(0043)  #define    C4_SET	  PORTC |= (1 << PC4)		/*置高电平*/
+(0044)  #define    C4_R	    PINC & (1 <<PC4)		/*读了电平*/
+(0045) 
+(0046) /**************************************************************************
+(0047)                     通讯I/O空间定义
+(0048) ***************************************************************************/
+(0049)  #define       COM_IN          C4_IN  
+(0050)  #define       COM_OUT         C4_OUT
+(0051)  #define       COM_CLR         C4_CLR
+(0052)  #define       COM_SET         C4_SET
+(0053)  #define       COM_R           C4_R
+(0054)  
+(0055) /**************************************************************************
+(0056)                     全局变量定义区
+(0057) ***************************************************************************/
+(0058)       U8       i;
+(0059)       U8    U8FLAG,k;
+(0060)       U8    U8count,U8temp;
+(0061)       U8    U8T_data_H,U8T_data_L,U8RH_data_H,U8RH_data_L,U8checkdata;
+(0062)       U8    U8T_data_H_temp,U8T_data_L_temp,U8RH_data_H_temp,U8RH_data_L_temp,U8checkdata_temp;
+(0063)       U8    U8comdata;
+(0064)       U16   ReceiveHighByte;
+(0065)       U16   ReceiveLowByte;
+(0066) /**************************************************************************
+(0067) ***************************************************************************/
+(0068) void port_init(void)
+(0069) {
+(0070)  PORTB = 0x00;
+_port_init:
+    0033 2422      CLR	R2
+    0034 BA28      OUT	0x18,R2
+(0071)  DDRB  = 0xFF;
+    0035 EF8F      LDI	R24,0xFF
+    0036 BB87      OUT	0x17,R24
+(0072)  PORTC = 0x03;                    
+    0037 E083      LDI	R24,3
+    0038 BB85      OUT	0x15,R24
+(0073)  DDRC  = 0x0C;
+    0039 E08C      LDI	R24,0xC
+    003A BB84      OUT	0x14,R24
+(0074)  PORTD = 0x00;
+    003B BA22      OUT	0x12,R2
+(0075)  DDRD  = 0xF0;
+    003C EF80      LDI	R24,0xF0
+    003D BB81      OUT	0x11,R24
+    003E 9508      RET
+(0076) }
+(0077) 
+(0078) void watchdog_init(void)
+(0079) {
+_watchdog_init:
+    003F 9508      RET
+(0080)   //WDR();        //this prevents a timout on enabling
+(0081)   //WDTCR = 0x0F; //WATCHDOG ENABLED - dont forget to issue WDRs
+(0082) }
+(0083) 
+(0084) 
+(0085) void Delay(unsigned int i)
+(0086) {
+(0087) 	while(i--);
+_Delay:
+  i                    --> R16
+    0040 0118      MOVW	R2,R16
+    0041 5001      SUBI	R16,1
+    0042 4010      SBCI	R17,0
+    0043 2022      TST	R2
+    0044 F7D9      BNE	0x0040
+    0045 2033      TST	R3
+    0046 F7C9      BNE	0x0040
+    0047 9508      RET
+_DelaymS:
+  i                    --> R20
+  dly                  --> R16
+    0048 D1BF      RCALL	push_gset1
+(0088) }
+(0089) 
+(0090) void DelaymS (U16 dly)                   
+(0091) {
+(0092) 	U16 i;
+(0093) 	for ( ; dly>0; dly--)
+    0049 C00C      RJMP	0x0056
+(0094) 	{
+(0095) 	    WDR();
+    004A 95A8      WDR
+(0096) 		for (i=0; i<1032; i++);        
+    004B 2744      CLR	R20
+    004C 2755      CLR	R21
+    004D C002      RJMP	0x0050
+    004E 5F4F      SUBI	R20,0xFF
+    004F 4F5F      SBCI	R21,0xFF
+    0050 3048      CPI	R20,0x8
+    0051 E0E4      LDI	R30,4
+    0052 075E      CPC	R21,R30
+    0053 F3D0      BCS	0x004E
+    0054 5001      SUBI	R16,1
+    0055 4010      SBCI	R17,0
+    0056 3000      CPI	R16,0
+    0057 0701      CPC	R16,R17
+    0058 F789      BNE	0x004A
+    0059 D1B1      RCALL	pop_gset1
+    005A 9508      RET
+(0097) 	}
+(0098) }
+(0099) 
+(0100) 
+(0101)        void  Delay_10us(void)
+(0102)       {
+(0103)         U8 i;                     
+(0104)         i++;i++;i++;i++;i++;i++;i++;i++;i++;
+_Delay_10us:
+  i                    --> R16
+    005B 9503      INC	R16
+    005C 9503      INC	R16
+    005D 9503      INC	R16
+    005E 9503      INC	R16
+    005F 9503      INC	R16
+    0060 9503      INC	R16
+    0061 9503      INC	R16
+    0062 9503      INC	R16
+    0063 9503      INC	R16
+(0105) 		i++;i++;i++;i++;i++;i++;i++;i++;i++;
+    0064 9503      INC	R16
+    0065 9503      INC	R16
+    0066 9503      INC	R16
+    0067 9503      INC	R16
+    0068 9503      INC	R16
+    0069 9503      INC	R16
+    006A 9503      INC	R16
+    006B 9503      INC	R16
+    006C 9503      INC	R16
+(0106) 		i++;i++;i++;i++;i++;i++;i++;i++;i++;
+    006D 9503      INC	R16
+    006E 9503      INC	R16
+    006F 9503      INC	R16
+    0070 9503      INC	R16
+    0071 9503      INC	R16
+    0072 9503      INC	R16
+    0073 9503      INC	R16
+    0074 9503      INC	R16
+    0075 9503      INC	R16
+(0107) 		i++;i++;i++;i++;i++;i++;i++;i++;i++;
+    0076 9503      INC	R16
+    0077 9503      INC	R16
+    0078 9503      INC	R16
+    0079 9503      INC	R16
+    007A 9503      INC	R16
+    007B 9503      INC	R16
+    007C 9503      INC	R16
+    007D 9503      INC	R16
+    007E 9503      INC	R16
+(0108) 		i++;i++;i++;i++;i++;i++;i++;i++;i++;
+    007F 9503      INC	R16
+    0080 9503      INC	R16
+    0081 9503      INC	R16
+    0082 9503      INC	R16
+    0083 9503      INC	R16
+    0084 9503      INC	R16
+    0085 9503      INC	R16
+    0086 9503      INC	R16
+    0087 9503      INC	R16
+(0109) 		i++;i++;i++;i++;i++;i++;i++;i++;i++;
+    0088 9503      INC	R16
+    0089 9503      INC	R16
+    008A 9503      INC	R16
+    008B 9503      INC	R16
+    008C 9503      INC	R16
+    008D 9503      INC	R16
+    008E 9503      INC	R16
+    008F 9503      INC	R16
+    0090 9503      INC	R16
+(0110) 		i++;i++;i++;i++;i++;i++;i++;i++;i++;
+    0091 9503      INC	R16
+    0092 9503      INC	R16
+    0093 9503      INC	R16
+    0094 9503      INC	R16
+    0095 9503      INC	R16
+    0096 9503      INC	R16
+    0097 9503      INC	R16
+    0098 9503      INC	R16
+    0099 9503      INC	R16
+(0111) 		i++;i++;
+    009A 9503      INC	R16
+    009B 9503      INC	R16
+    009C 9508      RET
+_COM:
+  i                    --> R20
+    009D D16A      RCALL	push_gset1
+(0112)        }
+(0113)         void  COM(void)
+(0114)       {
+(0115)      
+(0116) 	        U8 i;
+(0117)        for(i=0;i<8;i++)	   
+    009E 2744      CLR	R20
+    009F C03F      RJMP	0x00DF
+(0118) 	    {
+(0119) 		
+(0120) 	   	    U8FLAG=2;
+    00A0 E082      LDI	R24,2
+    00A1 93800072  STS	U8FLAG,R24
+(0121) 	   	while((!(COM_R))&&U8FLAG++);
+    00A3 999C      SBIC	0x13,4
+    00A4 C009      RJMP	0x00AE
+    00A5 90200072  LDS	R2,U8FLAG
+    00A7 2433      CLR	R3
+    00A8 2D82      MOV	R24,R2
+    00A9 5F8F      SUBI	R24,0xFF
+    00AA 93800072  STS	U8FLAG,R24
+    00AC 2022      TST	R2
+    00AD F7A9      BNE	0x00A3
+(0122) 		 if(U8FLAG==1)break;
+    00AE 91800072  LDS	R24,U8FLAG
+    00B0 3081      CPI	R24,1
+    00B1 F409      BNE	0x00B3
+    00B2 C02F      RJMP	0x00E2
+(0123) 			Delay_10us();
+    00B3 DFA7      RCALL	_Delay_10us
+(0124) 			Delay_10us();
+    00B4 DFA6      RCALL	_Delay_10us
+(0125) 		    Delay_10us();
+    00B5 DFA5      RCALL	_Delay_10us
+(0126) 			Delay_10us();
+    00B6 DFA4      RCALL	_Delay_10us
+(0127) 	  		U8temp=0;
+    00B7 2422      CLR	R2
+    00B8 9220006F  STS	U8temp,R2
+(0128) 	     if(COM_R)U8temp=1;
+    00BA 9B9C      SBIS	0x13,4
+    00BB C003      RJMP	0x00BF
+    00BC E081      LDI	R24,1
+    00BD 9380006F  STS	U8temp,R24
+(0129) 		    U8FLAG=2;
+    00BF E082      LDI	R24,2
+    00C0 93800072  STS	U8FLAG,R24
+(0130) 		   while((COM_R)&&U8FLAG++);
+    00C2 9B9C      SBIS	0x13,4
+    00C3 C009      RJMP	0x00CD
+    00C4 90200072  LDS	R2,U8FLAG
+    00C6 2433      CLR	R3
+    00C7 2D82      MOV	R24,R2
+    00C8 5F8F      SUBI	R24,0xFF
+    00C9 93800072  STS	U8FLAG,R24
+    00CB 2022      TST	R2
+    00CC F7A9      BNE	0x00C2
+(0131) 	   	//超时则跳出for循环		  
+(0132) 	   	 if(U8FLAG==1)break;
+    00CD 91800072  LDS	R24,U8FLAG
+    00CF 3081      CPI	R24,1
+    00D0 F409      BNE	0x00D2
+    00D1 C010      RJMP	0x00E2
+(0133) 	   	//判断数据位是0还是1	 
+(0134) 	   	   
+(0135) 		// 如果高电平高过预定0高电平值则数据位为 1 
+(0136) 	   	 
+(0137) 		   U8comdata<<=1;
+    00D2 90200064  LDS	R2,U8comdata
+    00D4 0C22      LSL	R2
+    00D5 92200064  STS	U8comdata,R2
+(0138) 	   	   U8comdata|=U8temp;        //0
+    00D7 9020006F  LDS	R2,U8temp
+    00D9 90300064  LDS	R3,U8comdata
+    00DB 2832      OR	R3,R2
+    00DC 92300064  STS	U8comdata,R3
+    00DE 9543      INC	R20
+    00DF 3048      CPI	R20,0x8
+    00E0 F408      BCC	0x00E2
+    00E1 CFBE      RJMP	0x00A0
+    00E2 D128      RCALL	pop_gset1
+    00E3 9508      RET
+(0139) 	     }//rof
+(0140) 	   
+(0141) 	}
+(0142) 
+(0143) 	//--------------------------------
+(0144) 	//-----湿度读取子程序 ------------
+(0145) 	//--------------------------------
+(0146) 	//----以下变量均为全局变量--------
+(0147) 	//----温度高8位== U8T_data_H------
+(0148) 	//----温度低8位== U8T_data_L------
+(0149) 	//----湿度高8位== U8RH_data_H-----
+(0150) 	//----湿度低8位== U8RH_data_L-----
+(0151) 	//----校验 8位 == U8checkdata-----
+(0152) 	//----调用相关子程序如下----------
+(0153) 	//---- Delay();, Delay_10us();,COM(); 
+(0154) 	//--------------------------------
+(0155) 
+(0156) 	void RH(void)
+(0157) 	{
+(0158) 	 
+(0159) 	  //主机拉低18ms 
+(0160)        COM_OUT;
+_RH:
+    00E4 9AA4      SBI	0x14,4
+(0161)        COM_CLR;
+    00E5 98AC      CBI	0x15,4
+(0162) 	   DelaymS(18);
+    00E6 E102      LDI	R16,0x12
+    00E7 E010      LDI	R17,0
+    00E8 DF5F      RCALL	_DelaymS
+(0163) 	   COM_IN;
+    00E9 98A4      CBI	0x14,4
+(0164) 	   COM_SET;
+    00EA 9AAC      SBI	0x15,4
+(0165) 	  
+(0166) 	 //总线由上拉电阻拉高 主机延时20us
+(0167) 	   Delay_10us();
+    00EB DF6F      RCALL	_Delay_10us
+(0168) 	   Delay_10us();
+    00EC DF6E      RCALL	_Delay_10us
+(0169) 	   Delay_10us();
+    00ED DF6D      RCALL	_Delay_10us
+(0170) 	   Delay_10us();
+    00EE DF6C      RCALL	_Delay_10us
+(0171) 	 //主机设为输入 判断从机响应信号 
+(0172) 	 //P2_0=1;
+(0173) 	 
+(0174) 	 //判断从机是否有低电平响应信号 如不响应则跳出，响应则向下运行	  
+(0175) 	  // if(!P2_0)		 //T !	 
+(0176) 	   if(COM_R)U8FLAG=1;
+    00EF 9B9C      SBIS	0x13,4
+    00F0 C05D      RJMP	0x014E
+    00F1 E081      LDI	R24,1
+    00F2 93800072  STS	U8FLAG,R24
+    00F4 C059      RJMP	0x014E
+(0177) 	   while(!(COM_R))		 
+(0178) 	   {
+(0179) 	   U8FLAG=2;
+    00F5 E082      LDI	R24,2
+    00F6 93800072  STS	U8FLAG,R24
+(0180) 	 //判断从机是否发出 80us 的低电平响应信号是否结束	 
+(0181) 	   //while((!P2_0)&&U8FLAG++);
+(0182) 	   while((!(COM_R))&&U8FLAG++);
+    00F8 999C      SBIC	0x13,4
+    00F9 C009      RJMP	0x0103
+    00FA 90200072  LDS	R2,U8FLAG
+    00FC 2433      CLR	R3
+    00FD 2D82      MOV	R24,R2
+    00FE 5F8F      SUBI	R24,0xFF
+    00FF 93800072  STS	U8FLAG,R24
+    0101 2022      TST	R2
+    0102 F7A9      BNE	0x00F8
+(0183) 	   if(U8FLAG==1)break;
+    0103 91800072  LDS	R24,U8FLAG
+    0105 3081      CPI	R24,1
+    0106 F409      BNE	0x0108
+    0107 C048      RJMP	0x0150
+(0184) 	   U8FLAG=2;
+    0108 E082      LDI	R24,2
+    0109 93800072  STS	U8FLAG,R24
+(0185) 	 //判断从机是否发出 80us 的高电平，如发出则进入数据接收状态
+(0186) 	 //while((P2_0)&&U8FLAG++);
+(0187) 	   while((COM_R)&&U8FLAG++);
+    010B 9B9C      SBIS	0x13,4
+    010C C009      RJMP	0x0116
+    010D 90200072  LDS	R2,U8FLAG
+    010F 2433      CLR	R3
+    0110 2D82      MOV	R24,R2
+    0111 5F8F      SUBI	R24,0xFF
+    0112 93800072  STS	U8FLAG,R24
+    0114 2022      TST	R2
+    0115 F7A9      BNE	0x010B
+(0188) 	   if(U8FLAG==1)break;
+    0116 91800072  LDS	R24,U8FLAG
+    0118 3081      CPI	R24,1
+    0119 F409      BNE	0x011B
+    011A C035      RJMP	0x0150
+(0189) 	 //数据接收状态		 
+(0190) 	   COM();
+    011B DF81      RCALL	_COM
+(0191) 	   if(U8FLAG==1)break;
+    011C 91800072  LDS	R24,U8FLAG
+    011E 3081      CPI	R24,1
+    011F F409      BNE	0x0121
+    0120 C02F      RJMP	0x0150
+(0192) 	   U8T_data_H_temp=U8comdata;
+    0121 90200064  LDS	R2,U8comdata
+    0123 92200069  STS	U8T_data_H_temp,R2
+(0193) 	   COM();
+    0125 DF77      RCALL	_COM
+(0194) 	   if(U8FLAG==1)break;
+    0126 91800072  LDS	R24,U8FLAG
+    0128 3081      CPI	R24,1
+    0129 F409      BNE	0x012B
+    012A C025      RJMP	0x0150
+(0195) 	   U8T_data_L_temp=U8comdata; 
+    012B 90200064  LDS	R2,U8comdata
+    012D 92200068  STS	U8T_data_L_temp,R2
+(0196) 	   COM();
+    012F DF6D      RCALL	_COM
+(0197) 	   if(U8FLAG==1)break;
+    0130 91800072  LDS	R24,U8FLAG
+    0132 3081      CPI	R24,1
+    0133 F409      BNE	0x0135
+    0134 C01B      RJMP	0x0150
+(0198) 	   U8RH_data_H_temp=U8comdata;
+    0135 90200064  LDS	R2,U8comdata
+    0137 92200067  STS	U8RH_data_H_temp,R2
+(0199) 	   COM();
+    0139 DF63      RCALL	_COM
+(0200) 	   if(U8FLAG==1)break;
+    013A 91800072  LDS	R24,U8FLAG
+    013C 3081      CPI	R24,1
+    013D F409      BNE	0x013F
+    013E C011      RJMP	0x0150
+(0201) 	   U8RH_data_L_temp=U8comdata;
+    013F 90200064  LDS	R2,U8comdata
+    0141 92200066  STS	U8RH_data_L_temp,R2
+(0202) 	   COM();
+    0143 DF59      RCALL	_COM
+(0203) 	   if(U8FLAG==1)break;
+    0144 91800072  LDS	R24,U8FLAG
+    0146 3081      CPI	R24,1
+    0147 F409      BNE	0x0149
+    0148 C007      RJMP	0x0150
+(0204) 	   U8checkdata_temp=U8comdata;
+    0149 90200064  LDS	R2,U8comdata
+    014B 92200065  STS	U8checkdata_temp,R2
+(0205) 	   break;
+    014D C002      RJMP	0x0150
+    014E 9B9C      SBIS	0x13,4
+    014F CFA5      RJMP	0x00F5
+(0206) 	    }//while
+(0207) 	   //P2_0=1;
+(0208) 	   COM_IN;
+    0150 98A4      CBI	0x14,4
+(0209) 	   COM_SET;
+    0151 9AAC      SBI	0x15,4
+(0210) 	 //数据校验 
+(0211) 	 
+(0212) 	   U8temp=(U8T_data_H_temp+U8T_data_L_temp+U8RH_data_H_temp+U8RH_data_L_temp);
+    0152 90200068  LDS	R2,U8T_data_L_temp
+    0154 90300069  LDS	R3,U8T_data_H_temp
+    0156 0C32      ADD	R3,R2
+    0157 90200067  LDS	R2,U8RH_data_H_temp
+    0159 0C32      ADD	R3,R2
+    015A 90200066  LDS	R2,U8RH_data_L_temp
+    015C 0C32      ADD	R3,R2
+    015D 9230006F  STS	U8temp,R3
+(0213) 	   if(U8temp==U8checkdata_temp)
+    015F 90200065  LDS	R2,U8checkdata_temp
+    0161 1432      CP	R3,R2
+    0162 F4A1      BNE	0x0177
+(0214) 	   {
+(0215) 	   	  U8RH_data_H=U8T_data_H_temp;
+    0163 90200069  LDS	R2,U8T_data_H_temp
+    0165 9220006C  STS	U8RH_data_H,R2
+(0216) 	   	  U8RH_data_L=U8T_data_L_temp;
+    0167 90200068  LDS	R2,U8T_data_L_temp
+    0169 9220006B  STS	U8RH_data_L,R2
+(0217) 	   	  U8T_data_H=U8RH_data_H_temp;
+    016B 90200067  LDS	R2,U8RH_data_H_temp
+    016D 9220006E  STS	U8T_data_H,R2
+(0218) 	   	  U8T_data_L=U8RH_data_L_temp;
+    016F 90200066  LDS	R2,U8RH_data_L_temp
+    0171 9220006D  STS	U8T_data_L,R2
+(0219) 	   	  U8checkdata=U8checkdata_temp;
+    0173 90200065  LDS	R2,U8checkdata_temp
+    0175 9220006A  STS	U8checkdata,R2
+(0220) 	   }//fi
+(0221) 	  
+(0222) 	  
+(0223) 	   COM_IN;
+    0177 98A4      CBI	0x14,4
+(0224) 	   COM_SET;
+    0178 9AAC      SBI	0x15,4
+    0179 9508      RET
+(0225) 
+(0226) 	}
+(0227) 	
+(0228) /*
+(0229) 串口初始化函数
+(0230) 系统频率：2MHz
+(0231) 停止位：1
+(0232) 波特率：9600
+(0233) 数据长度：8
+(0234) */
+(0235) void Uart_Init(void) {
+(0236) 	UCSRA = 0x02;		/*2倍速					 */
+_Uart_Init:
+    017A E082      LDI	R24,2
+    017B B98B      OUT	0x0B,R24
+(0237) 	UCSRB = 0x18;		/*允许接收和发送*/
+    017C E188      LDI	R24,0x18
+    017D B98A      OUT	0x0A,R24
+(0238) 	UCSRC = 0x06;		/*8位数据				 */
+    017E E086      LDI	R24,6
+    017F BD80      OUT	0x20,R24
+(0239) 	UBRRH = 0x00;
+    0180 2422      CLR	R2
+    0181 BC20      OUT	0x20,R2
+(0240) 	//UBRRL = 47;		/*9600		3.6864M      */  
+(0241) 	UBRRL = 95;		    /*9600	    7.3728M      */ 
+    0182 E58F      LDI	R24,0x5F
+    0183 B989      OUT	0x09,R24
+    0184 9508      RET
+(0242) }
+(0243) 
+(0244) /*
+(0245) 串数据发送
+(0246) 查询方式发送
+(0247) */
+(0248) void Uart_Transmit(unsigned char i) {
+(0249) 
+(0250) 	/* 等待发送缓冲器为空*/
+(0251) 	while (!(UCSRA & (1<<UDRE)));
+_Uart_Transmit:
+  i                    --> R16
+    0185 9B5D      SBIS	0x0B,5
+    0186 CFFE      RJMP	_Uart_Transmit
+(0252) 	/* 将数据放入缓冲器，发送数据*/
+(0253) 	UDR = i;
+    0187 B90C      OUT	0x0C,R16
+    0188 9508      RET
+(0254) }
+(0255) 
+(0256) /*
+(0257) 串数据接收
+(0258) 查询方式接收
+(0259) */
+(0260) unsigned char Uart_Receive( void ) {
+(0261) 
+(0262) 	/* 等待接收数据*/
+(0263) 	while (!(UCSRA & (1<<RXC)));
+_Uart_Receive:
+    0189 9B5F      SBIS	0x0B,7
+    018A CFFE      RJMP	_Uart_Receive
+(0264) 	/* 从缓冲器中获取并返回数据*/
+(0265) 	// Uart_Transmit(UDR);
+(0266) 	return UDR;
+    018B B10C      IN	R16,0x0C
+    018C 9508      RET
+(0267) }
+(0268) 
+(0269) void init_devices(void) 
+(0270) {
+(0271) unsigned char i;
+(0272) 		   CLI();                     
+_init_devices:
+  i                    --> Y+1
+    018D 94F8      BCLR	7
+(0273)      port_init();
+    018E DEA4      RCALL	_port_init
+(0274)  watchdog_init();
+    018F DEAF      RCALL	_watchdog_init
+(0275)     Uart_Init();
+    0190 DFE9      RCALL	_Uart_Init
+(0276)     MCUCR = 0x03;
+    0191 E083      LDI	R24,3
+    0192 BF85      OUT	0x35,R24
+(0277)     GICR  = 0x00;                //关外部中断0
+    0193 2422      CLR	R2
+    0194 BE2B      OUT	0x3B,R2
+(0278)     TIMSK = 0x00;                //关定时器1中断
+    0195 BE29      OUT	0x39,R2
+(0279)            SEI();                //re-enable interrupts
+    0196 9478      BSET	7
+    0197 9508      RET
+(0280)                            
+(0281) }	
+(0282) /**************************************************************************
+(0283) 
+(0284) 
+(0285) 
+(0286)                             主函数
+(0287) 							
+(0288) 							
+(0289) 							
+(0290) 							
+(0291) **************************************************************************/
+(0292) 
+(0293) 
+(0294)  void main(void)
+(0295) {
+(0296) 
+(0297)  init_devices() ;
+_main:
+    0198 DFF4      RCALL	_init_devices
+(0298)  COM_IN;
+    0199 98A4      CBI	0x14,4
+(0299)  COM_SET;
+    019A 9AAC      SBI	0x15,4
+    019B C04A      RJMP	0x01E6
+(0300)  
+(0301)  while(1)
+(0302)  {
+(0303)  
+(0304)  //读DHT11   
+(0305)   RH();
+    019C DF47      RCALL	_RH
+(0306)   
+(0307)   //把DHT11的十六进制数据转换成10进制  
+(0308)   //格式  湿度  温度  校验和   
+(0309)   //例如串口发送数据   59 00 24 00 53   则湿度为59 温度为24 校验和为53 
+(0310)   
+(0311)   
+(0312)   
+(0313)   U8temp=U8RH_data_H/10;
+    019D E01A      LDI	R17,0xA
+    019E 9100006C  LDS	R16,U8RH_data_H
+    01A0 D049      RCALL	div8u
+    01A1 9300006F  STS	U8temp,R16
+(0314)   U8temp<<=4;
+    01A3 2F80      MOV	R24,R16
+    01A4 708F      ANDI	R24,0xF
+    01A5 9582      SWAP	R24
+    01A6 9380006F  STS	U8temp,R24
+(0315)   U8temp|=U8RH_data_H%10;
+    01A8 E01A      LDI	R17,0xA
+    01A9 9100006C  LDS	R16,U8RH_data_H
+    01AB D03C      RCALL	mod8u
+    01AC 9020006F  LDS	R2,U8temp
+    01AE 2A20      OR	R2,R16
+    01AF 9220006F  STS	U8temp,R2
+(0316)   U8RH_data_H=U8temp;
+    01B1 9220006C  STS	U8RH_data_H,R2
+(0317)   Uart_Transmit(U8RH_data_H); 
+    01B3 2D02      MOV	R16,R2
+    01B4 DFD0      RCALL	_Uart_Transmit
+(0318)   Uart_Transmit(U8RH_data_L);
+    01B5 9100006B  LDS	R16,U8RH_data_L
+    01B7 DFCD      RCALL	_Uart_Transmit
+(0319)   
+(0320)   U8temp=U8T_data_H/10;
+    01B8 E01A      LDI	R17,0xA
+    01B9 9100006E  LDS	R16,U8T_data_H
+    01BB D02E      RCALL	div8u
+    01BC 9300006F  STS	U8temp,R16
+(0321)   U8temp<<=4;
+    01BE 2F80      MOV	R24,R16
+    01BF 708F      ANDI	R24,0xF
+    01C0 9582      SWAP	R24
+    01C1 9380006F  STS	U8temp,R24
+(0322)   U8temp|=U8T_data_H%10;
+    01C3 E01A      LDI	R17,0xA
+    01C4 9100006E  LDS	R16,U8T_data_H
+    01C6 D021      RCALL	mod8u
+    01C7 9020006F  LDS	R2,U8temp
+    01C9 2A20      OR	R2,R16
+    01CA 9220006F  STS	U8temp,R2
+(0323)   U8T_data_H=U8temp;
+    01CC 9220006E  STS	U8T_data_H,R2
+(0324)   Uart_Transmit(U8T_data_H);  
+    01CE 2D02      MOV	R16,R2
+    01CF DFB5      RCALL	_Uart_Transmit
+(0325)   Uart_Transmit(U8T_data_L); 
+    01D0 9100006D  LDS	R16,U8T_data_L
+    01D2 DFB2      RCALL	_Uart_Transmit
+(0326)   
+(0327) 
+(0328)   Uart_Transmit(U8checkdata); 
+    01D3 9100006A  LDS	R16,U8checkdata
+    01D5 DFAF      RCALL	_Uart_Transmit
+(0329)   //延时2S
+(0330)   for(U8temp=0;U8temp<200;U8temp++)
+    01D6 2422      CLR	R2
+    01D7 9220006F  STS	U8temp,R2
+    01D9 C008      RJMP	0x01E2
+(0331)   {
+(0332)   DelaymS(10);
+FILE: <library>
+    01DA E00A      LDI	R16,0xA
+    01DB E010      LDI	R17,0
+    01DC DE6B      RCALL	_DelaymS
+    01DD 9180006F  LDS	R24,U8temp
+    01DF 5F8F      SUBI	R24,0xFF
+    01E0 9380006F  STS	U8temp,R24
+    01E2 9180006F  LDS	R24,U8temp
+    01E4 3C88      CPI	R24,0xC8
+    01E5 F3A0      BCS	0x01DA
+    01E6 CFB5      RJMP	0x019C
+    01E7 9508      RET
+mod8u:
+    01E8 9468      BSET	6
+    01E9 C001      RJMP	xdiv8u
+div8u:
+    01EA 94E8      BCLR	6
+xdiv8u:
+    01EB 932A      ST	R18,-Y
+    01EC 92FA      ST	R15,-Y
+    01ED 92EA      ST	R14,-Y
+    01EE 24FF      CLR	R15
+    01EF 24EE      CLR	R14
+    01F0 E120      LDI	R18,0x10
+    01F1 0F00      LSL	R16
+    01F2 1CFF      ROL	R15
+    01F3 1CEE      ROL	R14
+    01F4 16E1      CP	R14,R17
+    01F5 F010      BCS	0x01F8
+    01F6 1AE1      SUB	R14,R17
+    01F7 9503      INC	R16
+    01F8 952A      DEC	R18
+    01F9 F7B9      BNE	0x01F1
+    01FA F40E      BRTC	0x01FC
+    01FB 2D0E      MOV	R16,R14
+    01FC 90E9      LD	R14,Y+
+    01FD 90F9      LD	R15,Y+
+    01FE 9129      LD	R18,Y+
+    01FF 9508      RET
+push_gset5:
+    0200 92FA      ST	R15,-Y
+    0201 92EA      ST	R14,-Y
+push_gset4:
+    0202 92DA      ST	R13,-Y
+    0203 92CA      ST	R12,-Y
+push_gset3:
+    0204 92BA      ST	R11,-Y
+    0205 92AA      ST	R10,-Y
+push_gset2:
+    0206 937A      ST	R23,-Y
+    0207 936A      ST	R22,-Y
+push_gset1:
+    0208 935A      ST	R21,-Y
+    0209 934A      ST	R20,-Y
+    020A 9508      RET
+pop_gset1:
+    020B E0E1      LDI	R30,1
+pop:
+    020C 9149      LD	R20,Y+
+    020D 9159      LD	R21,Y+
+    020E FDE0      SBRC	R30,0
+    020F 9508      RET
+    0210 9169      LD	R22,Y+
+    0211 9179      LD	R23,Y+
+    0212 FDE1      SBRC	R30,1
+    0213 9508      RET
+    0214 90A9      LD	R10,Y+
+    0215 90B9      LD	R11,Y+
+    0216 FDE2      SBRC	R30,2
+    0217 9508      RET
+    0218 90C9      LD	R12,Y+
+    0219 90D9      LD	R13,Y+
+    021A FDE3      SBRC	R30,3
+    021B 9508      RET
+    021C 90E9      LD	R14,Y+
+    021D 90F9      LD	R15,Y+
+    021E 9508      RET
