@@ -14,6 +14,9 @@
 -  hc-sr04
     [HC-SR04超声波测距原理简介](https://www.bilibili.com/video/BV1jr4y1C7yK)
 
+-  MAX7219实例讲解
+    [MAX7219实例讲解](https://www.bilibili.com/video/BV1CM4y1A7N5)
+
 
 
 #### 官方IDE下载
